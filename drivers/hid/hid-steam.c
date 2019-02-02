@@ -41,6 +41,7 @@
 #include <linux/rcupdate.h>
 #include <linux/delay.h>
 #include <linux/power_supply.h>
+#include <linux/leds.h>
 #include "hid-ids.h"
 
 MODULE_LICENSE("GPL");
@@ -115,6 +116,7 @@ struct steam_device {
 	struct mutex mutex;
 	bool client_opened, input_opened;
 	struct input_dev __rcu *input;
+	struct led_classdev *led;
 	unsigned long quirks;
 	struct work_struct work_connect;
 	bool connected;
@@ -123,6 +125,7 @@ struct steam_device {
 	struct power_supply __rcu *battery;
 	u8 battery_charge;
 	u16 voltage;
+	u8 led_state;
 };
 
 static int steam_recv_report(struct steam_device *steam,
@@ -363,6 +366,66 @@ static int steam_battery_get_property(struct power_supply *psy,
 	return ret;
 }
 
+static void steam_led_set_brightness(struct led_classdev *led,
+				    enum led_brightness value)
+{
+	struct device *dev = led->dev->parent;
+	struct hid_device *hdev = to_hid_device(dev);
+	struct steam_device *drv_data;
+	
+	drv_data = hid_get_drvdata(hdev);
+	
+	if(value < 0 || value > 100) {
+		return;	//Add error here
+	}
+	//Source: https://github.com/rodrigorc/steamctrl/blob/master/src/steamctrl.c line 211
+	steam_write_registers(drv_data,
+		STEAM_REG_LED, value,
+		0);
+		
+	drv_data->led_state = value;
+}
+
+static enum led_brightness steam_led_get_brightness(struct led_classdev *led)
+{	
+	struct device *dev = led->dev->parent;
+	struct hid_device *hdev = to_hid_device(dev);
+	struct steam_device *drv_data;
+	
+	drv_data = hid_get_drvdata(hdev);
+	
+	return drv_data->led_state;
+}
+
+static int steam_led_register(struct steam_device *steam)
+{
+	int ret;
+	struct led_classdev *led;
+	
+	led = kzalloc(sizeof(struct led_classdev), GFP_KERNEL);
+	
+	if(!led)
+		return -ENOMEM;
+	
+	led->name = devm_kasprintf(&steam->hdev->dev,
+			GFP_KERNEL, "steam-controller-%s-led",
+			steam->serial_no);
+	led->brightness = steam->led_state;
+	led->max_brightness = 100;
+	led->flags = LED_CORE_SUSPENDRESUME;
+	led->brightness_get = steam_led_get_brightness;
+	led->brightness_set = steam_led_set_brightness;
+	
+	if (!led->name)
+		return -ENOMEM;
+	
+	steam->led = led;
+	
+	ret = led_classdev_register(&steam->hdev->dev, led);
+	
+	return ret;
+}
+
 static int steam_battery_register(struct steam_device *steam)
 {
 	struct power_supply *battery;
@@ -496,6 +559,9 @@ static int steam_register(struct steam_device *steam)
 	/* ignore battery errors, we can live without it */
 	if (steam->quirks & STEAM_QUIRK_WIRELESS)
 		steam_battery_register(steam);
+	
+	steam->led_state = 100;	//LED is always(?) at full brightness when the controller connects
+	steam_led_register(steam);
 
 	return 0;
 
@@ -508,16 +574,23 @@ static void steam_unregister(struct steam_device *steam)
 {
 	struct input_dev *input;
 	struct power_supply *battery;
+	struct led_classdev *led;
 
 	rcu_read_lock();
 	input = rcu_dereference(steam->input);
 	battery = rcu_dereference(steam->battery);
+	led = rcu_dereference(steam->led);
 	rcu_read_unlock();
 
 	if (battery) {
 		RCU_INIT_POINTER(steam->battery, NULL);
 		synchronize_rcu();
 		power_supply_unregister(battery);
+	}
+	if(led) {
+		RCU_INIT_POINTER(steam->led, NULL);
+		synchronize_rcu();
+		led_classdev_unregister(led);
 	}
 	if (input) {
 		RCU_INIT_POINTER(steam->input, NULL);
