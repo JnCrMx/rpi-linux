@@ -1,0 +1,28 @@
+name: arm64::bcm2711_defconfig
+
+on: [push]
+
+jobs:
+  build:
+
+    runs-on: self-hosted
+    
+    steps:
+    - uses: actions/checkout@v1
+    - name: make mrproper
+      run: make mrproper
+    - name: Make build directory
+      run: mkdir build
+    - name: make bcm2711_defconfig
+      run: make O=build/ ARCH=arm64 bcm2711_defconfig
+    - name: make
+      run: make O=build/ ARCH=arm64
+    - name: Make build/modules_install directory
+      run: mkdir build/modules_install
+    - name: make modules_install
+      run: make O=build/ ARCH=arm64 INSTALL_MOD_PATH=build/modules_install modules_install
+    - name: Upload artifact
+      uses: actions/upload-artifact@v1.0.0
+      with:
+        name: build
+        path: build/
