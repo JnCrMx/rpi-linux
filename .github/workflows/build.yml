@@ -26,6 +26,8 @@ jobs:
       with:
         name: boot
         path: build/arch/arm64/boot
+    - name: Remove symbolic links
+      run: find -P build/modules_install/ -type l -delete # symbolic links are a problem because actions/upload-artifact@v1.0.0 seems to follow them and therefore tries to upload Kernel source from build/modules_install/lib/modules/{$KERNEL_VERSION}/source which takes a lot of time. Because of that all runs got canceled due to using too much memory.
     - name: Upload build:modules
       uses: actions/upload-artifact@v1.0.0
       with:
