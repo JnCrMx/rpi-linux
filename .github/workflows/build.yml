@@ -1,10 +1,10 @@
-name: arm64::bcm2711_defconfig
+name: build
 
 on: [push]
 
 jobs:
-  build:
-
+  arm64-bcm2711_defconfig:
+    
     runs-on: self-hosted
     
     steps:
@@ -20,7 +20,7 @@ jobs:
     - name: Make build/modules_install directory
       run: mkdir build/modules_install
     - name: make modules_install
-      run: make O=build/ ARCH=arm64 INSTALL_MOD_PATH=build/modules_install modules_install
+      run: make O=build/ ARCH=arm64 INSTALL_MOD_PATH=modules_install/ modules_install
     - name: Upload build:boot
       uses: actions/upload-artifact@v1.0.0
       with:
