@@ -21,8 +21,13 @@ jobs:
       run: mkdir build/modules_install
     - name: make modules_install
       run: make O=build/ ARCH=arm64 INSTALL_MOD_PATH=build/modules_install modules_install
-    - name: Upload artifact
+    - name: Upload build:boot
       uses: actions/upload-artifact@v1.0.0
       with:
-        name: build
-        path: build/
+        name: boot
+        path: build/arch/arm64/boot
+    - name: Upload build:modules
+      uses: actions/upload-artifact@v1.0.0
+      with:
+        name: modules
+        path: build/modules_install
